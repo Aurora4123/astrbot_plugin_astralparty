@@ -1,8 +1,8 @@
-name: astrbot_plugin_astralparty # 插件唯一识别名，以 astrbot_plugin_ 前缀开头
+name: astrbot_plugin_astralparty
 display_name: 《吉星派对》随机挑战
-desc: 随机抽取游戏《吉星派对》中的地图和角色。 # 插件简短描述
-version: v1.0 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: aurora4123 # 作者
+desc: 随机抽取游戏《吉星派对》中的地图和角色。
+version: v1.0 
+author: aurora4123 
 repo: https://github.com/Aurora4123/astrbot_plugin_astralparty # 插件的仓库地址
 support_platforms:
   - aiocqhttp
