@@ -15,9 +15,12 @@ class MyPlugin(Star):
     @filter.command("星趴角色")
     async def random_character(self, event: AstrMessageEvent):
         """随机一个角色"""
-        character = Character.get_random_character();
-        yield event.plain_result(f"你抽取到的角色是：{character.value}")
+        #character = Character.get_random_character();
+        yield event.plain_result(f"你抽取到的角色是：{Character.get_random_character}")
 
+    @filter.command("星趴地图")
+    async def random_map(self, event: AstrMessageEvent):
+        yield event.plain_result(f"你抽取到的地图是：{Map.get_random_map}")
     @filter.command("星趴队伍")
     async def random_team(self, event: AstrMessageEvent):
         """随机一个队伍"""
@@ -34,7 +37,7 @@ class MyPlugin(Star):
         map_message = f"你抽取到的地图是：{_map.value}\n"
         team_message = f"队伍：\n"
         for character in team:
-            team_message += f"{character.value} \n"
+            team_message += f" {character.value} \n"
         yield event.plain_result(map_message + team_message)
 
     async def terminate(self):
