@@ -32,6 +32,7 @@ class Character(Enum):
     Z3000 = "垃圾桶"
     CH = "超天酱"
     CA = "糖糖"
+    LL = "玲玲"
     @classmethod
     def get_random_character(cls):
         """获取随机角色"""
