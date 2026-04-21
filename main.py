@@ -15,27 +15,31 @@ class MyPlugin(Star):
     @filter.command("星趴角色")
     async def random_character(self, event: AstrMessageEvent):
         """随机一个角色"""
-        #character = Character.get_random_character();
-        yield event.plain_result(f"你抽取到的角色是：{Character.get_random_character}")
+        character = Character.get_random_character()
+        yield event.plain_result(f"你抽取到的角色是：{character.value}")
 
     @filter.command("星趴地图")
     async def random_map(self, event: AstrMessageEvent):
-        yield event.plain_result(f"你抽取到的地图是：{Map.get_random_map}")
+        """随机一个地图"""
+        _map = Map.get_random_map()
+        yield event.plain_result(f"你抽取到的地图是：{_map.value}")
+
     @filter.command("星趴队伍")
     async def random_team(self, event: AstrMessageEvent):
         """随机一个队伍"""
-        team =  get_character_team()
-        message = f"你抽取到的队伍是：\n"
+        team = get_character_team()
+        message = "你抽取到的队伍是：\n"
         for character in team:
             message += f"{character.value} \n"
         yield event.plain_result(message)
+
     @filter.command("星趴随机")
     async def random(self, event: AstrMessageEvent):
         """随机一个地图和队伍"""
         team = get_character_team()
         _map = Map.get_random_map()
         map_message = f"你抽取到的地图是：{_map.value}\n"
-        team_message = f"队伍：\n"
+        team_message = "队伍：\n"
         for character in team:
             team_message += f" {character.value} \n"
         yield event.plain_result(map_message + team_message)
