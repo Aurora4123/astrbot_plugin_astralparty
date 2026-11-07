@@ -35,7 +35,7 @@ body { padding: 28px; color: #17233d; font-family: "Noto Sans CJK SC", "Microsof
     <div class="meta-row"><span class="meta-label">{{ label | e }}</span><span class="meta-value">{{ value | e }}</span></div>
     {% endfor %}
   </section>
-  {% if limited %}<p class="warning">限时地图存档 · 请确认游戏内当前是否开放</p>{% endif %}
+  {% if limited %}<p class="warning">限时地图 · 当前处于已配置的开放时段</p>{% endif %}
   {% if slots %}<section class="slots">
     {% for slot in slots %}
     <article class="slot">

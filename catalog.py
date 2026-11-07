@@ -31,6 +31,22 @@ class CatalogError(ValueError):
     pass
 
 
+def parse_time(value):
+    if not isinstance(value, str) or len(value) != 12 or not value.isascii() or not value.isdigit():
+        raise ValueError("expected YYYYMMDDHHMM")
+    return datetime.strptime(value, "%Y%m%d%H%M").replace(tzinfo=CST)
+
+
+def map_is_available(game_map, now=None):
+    if game_map["mode"] != "limited":
+        return True
+    # A catalog entry alone does not prove that a time-limited event is open.
+    if not game_map.get("available_from") or not game_map.get("available_until"):
+        return False
+    when = (now or now_cst()).astimezone(CST)
+    return parse_time(game_map["available_from"]) <= when < parse_time(game_map["available_until"])
+
+
 def _text(value, field):
     if not isinstance(value, str) or not value.strip() or len(value) > 80:
         raise CatalogError(f"无效的 {field}")
@@ -59,14 +75,20 @@ def validate(data):
             if kind == "characters":
                 _text(entry.get("title"), "title")
                 try:
-                    release = entry["release_at"]
-                    if not isinstance(release, str) or len(release) != 12 or not release.isascii() or not release.isdigit():
-                        raise ValueError("expected YYYYMMDDHHMM")
-                    datetime.strptime(entry["release_at"], "%Y%m%d%H%M")
+                    parse_time(entry["release_at"])
                 except (KeyError, TypeError, ValueError) as exc:
                     raise CatalogError("角色上线时间无效") from exc
             elif entry.get("mode") not in ("pve", "pvp", "limited"):
                 raise CatalogError("地图模式无效")
+            else:
+                if "play_mode" in entry and entry["play_mode"] not in ("pve", "pvp"):
+                    raise CatalogError("限时地图玩法无效")
+                if "available_from" in entry or "available_until" in entry:
+                    try:
+                        if parse_time(entry["available_from"]) >= parse_time(entry["available_until"]):
+                            raise ValueError("empty availability window")
+                    except (KeyError, TypeError, ValueError) as exc:
+                        raise CatalogError("地图开放时间无效，需同时提供起止时间") from exc
     if len(data["characters"]) < 4:
         raise CatalogError("角色不足四人")
     for mode in ("pve", "pvp", "limited"):
@@ -197,6 +219,18 @@ class CatalogStore:
         mode = normalize_mode(mode)
         return [m for m in self.data["maps"] if mode == "all" or m["mode"] == mode]
 
+    def draw_maps(self, mode="pve", now=None):
+        """Playable pool, separate from the historical inventory used by sync."""
+        mode = normalize_mode(mode)
+        result = []
+        for game_map in self.data["maps"]:
+            if not map_is_available(game_map, now):
+                continue
+            play_mode = game_map.get("play_mode") if game_map["mode"] == "limited" else game_map["mode"]
+            if mode == "all" or (mode == "limited" and game_map["mode"] == "limited") or play_mode == mode:
+                result.append(game_map)
+        return result
+
     def team(self, num=4):
         pool = self.characters()
         if not 1 <= num <= len(pool):
@@ -207,9 +241,9 @@ class CatalogStore:
         return self.team(1)[0]
 
     def random_map(self, mode="pve"):
-        pool = self.maps(mode)
+        pool = self.draw_maps(mode)
         if not pool:
-            raise CatalogError("该模式暂无可用地图")
+            raise CatalogError("该模式暂无已确认开放的地图")
         return random.choice(pool)
 
     async def refresh(self, fetcher=fetch_page):
@@ -228,15 +262,26 @@ class CatalogStore:
                     old = bundled.get(character["id"], previous.get(character["id"], {}))
                     if old.get("avatar_url"):
                         character["avatar_url"] = old["avatar_url"]
+                old_maps = {m["id"]: m for m in load_json(self.bundled_path)["maps"]}
+                for game_map in self.data["maps"]:
+                    old_maps[game_map["id"]] = old_maps.get(game_map["id"], {}) | game_map
+                for game_map in candidate["maps"]:
+                    old = old_maps.get(game_map["id"], {})
+                    # The wiki navigation table does not supply availability.
+                    # Retain verified, finite windows rather than reopening archives.
+                    for key in ("play_mode", "available_from", "available_until"):
+                        if key in old:
+                            game_map[key] = old[key]
                 old_ids = {c["id"] for c in self.data["characters"]}
                 if not old_ids.issubset({c["id"] for c in candidate["characters"]}):
                     raise CatalogError("图鉴角色缺失，保留原数据；请检查图鉴或手动维护")
                 for mode in ("pve", "pvp", "limited"):
                     if len([m for m in candidate["maps"] if m["mode"] == mode]) < len(self.maps(mode)):
                         raise CatalogError(f"{mode} 地图数量异常减少，保留原数据")
+                validate(candidate)
                 await asyncio.to_thread(atomic_save, self.cache_path, candidate)
                 self.data, self.source, self.last_error = candidate, "BWIKI 同步", ""
-                return f"更新成功：{len(self.characters())} 名已上线角色，{len(self.maps('all'))} 张地图（含限时）"
+                return f"更新成功：{len(self.characters())} 名已上线角色，{len(self.maps('all'))} 张地图资料（当前可抽限时 {len(self.draw_maps('limited'))} 张）"
             except Exception as exc:
                 self.last_error = f"{type(exc).__name__}: {exc}"
                 return "更新失败，已保留现有数据。请检查网络或查看日志。"
@@ -246,6 +291,7 @@ class CatalogStore:
                             (("合作", "pve"), ("对战", "pvp"), ("限时存档", "limited")))
         return (f"数据来源：{self.source}\n数据时间：{self.data.get('synced_at', '未知')}\n"
                 f"已上线角色：{len(self.characters())}\n地图：{counts}\n"
+                f"当前可抽限时：{len(self.draw_maps('limited'))}\n"
                 f"最近同步：{'失败（保留现有数据）' if self.last_error else '正常'}")
 
 
@@ -254,5 +300,5 @@ def character_label(character):
 
 
 def map_label(game_map):
-    suffix = "（限时地图存档，请确认游戏内是否开放）" if game_map["mode"] == "limited" else ""
+    suffix = "（限时地图）" if game_map["mode"] == "limited" else ""
     return game_map["name"] + suffix

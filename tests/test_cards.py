@@ -45,6 +45,8 @@ def test_card_includes_all_slots_and_escapes_external_text(store, tmp_path):
     assert "四号位" in html
     assert "丛林冒险" in html
     assert "疯狂" not in html  # Do not invent unsupported difficulty settings.
+    assert "不重复抽取" not in html
+    assert ("队伍", "4 人") in data["metadata"]
 
 
 def test_unknown_avatar_has_named_placeholder(tmp_path):
@@ -172,6 +174,18 @@ def test_plugin_sends_card_with_same_draw(monkeypatch, tmp_path):
     data = plugin.html_render.call_args.args[1]
     assert len({s["name"] for s in data["slots"]}) == 4
     assert data["metadata"][1] == ("玩法", "标准对战")
+
+
+@pytest.mark.parametrize("old_default", ["全部", "对战"])
+@pytest.mark.parametrize("command", ["random", "random_map"])
+def test_no_argument_commands_ignore_old_pvp_default(monkeypatch, tmp_path, old_default, command):
+    plugin = load_plugin(monkeypatch, tmp_path)
+    plugin.config["default_map_mode"] = old_default
+    plugin.html_render = AsyncMock(return_value="https://renderer.example/card.png")
+    event = Event()
+    asyncio.run(collect(getattr(plugin, command)(event)))
+    data = plugin.html_render.call_args.args[1]
+    assert data["metadata"][1] == ("玩法", "合作挑战")
 
 
 @pytest.mark.parametrize("failure", ["render", "send", "disabled"])

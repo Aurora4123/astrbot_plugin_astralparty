@@ -156,3 +156,60 @@ def test_simultaneous_refresh_reuses_attempt(store):
         assert "正在进行" in second
         assert "更新成功" in await first
     asyncio.run(run())
+
+
+def test_closed_and_unknown_limited_maps_never_enter_any_draw_pool(store):
+    assert len(store.maps("limited")) == 6  # Still retained for future updates.
+    assert store.draw_maps("limited") == []
+    assert len(store.draw_maps()) == 8
+    assert len(store.draw_maps("all")) == 13
+    with pytest.raises(CatalogError, match="暂无已确认开放"):
+        store.random_map("限时")
+
+
+@pytest.mark.parametrize("when, expected", [
+    ((2099, 11, 12, 13, 59), False),
+    ((2099, 11, 12, 14, 0), True),
+    ((2099, 11, 13, 13, 59), True),
+    ((2099, 11, 13, 14, 0), False),
+])
+def test_limited_availability_boundaries_in_china_time(store, when, expected):
+    game_map = store.maps("limited")[0]
+    game_map.update(play_mode="pve", available_from="209911121400", available_until="209911131400")
+    now = datetime(*when, tzinfo=CST)
+    assert (game_map in store.draw_maps(now=now)) is expected
+    assert (game_map in store.draw_maps("all", now)) is expected
+    assert (game_map in store.draw_maps("limited", now)) is expected
+
+
+def test_open_limited_pvp_stays_out_of_default_cooperative_pool(store):
+    game_map = store.maps("limited")[0]
+    game_map.update(play_mode="pvp", available_from="209911121400", available_until="209911131400")
+    now = datetime(2099, 11, 12, 14, 0, tzinfo=CST)
+    assert game_map not in store.draw_maps(now=now)
+    assert game_map in store.draw_maps("pvp", now)
+    assert game_map in store.draw_maps("limited", now)
+
+
+@pytest.mark.parametrize("window", [
+    {"available_from": "209911121400"},
+    {"available_from": "invalid", "available_until": "209911131400"},
+    {"available_from": "209911131400", "available_until": "209911121400"},
+])
+def test_invalid_availability_windows_are_rejected(store, window):
+    store.maps("limited")[0].update(window)
+    with pytest.raises(CatalogError, match="开放时间无效"):
+        validate(store.data)
+
+
+def test_wiki_refresh_preserves_finite_map_availability(store):
+    game_map = store.maps("limited")[0]
+    game_map.update(play_mode="pve", available_from="209911121400", available_until="209911131400")
+    with patch("catalog.now_cst", return_value=datetime(2099, 11, 12, 15, 0, tzinfo=CST)):
+        result = asyncio.run(store.refresh(fetcher_for(store.data)))
+    assert "更新成功" in result
+    saved = next(m for m in load_json(store.cache_path)["maps"] if m["id"] == game_map["id"])
+    assert saved["available_from"] == "209911121400"
+    assert saved["available_until"] == "209911131400"
+    assert saved in store.draw_maps(now=datetime(2099, 11, 12, 15, 0, tzinfo=CST))
+    assert saved not in store.draw_maps("all", datetime(2099, 11, 13, 14, 0, tzinfo=CST))

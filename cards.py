@@ -120,10 +120,10 @@ async def prepare_card(characters, game_map, kind, avatars):
     metadata = []
     if game_map:
         metadata.extend([("地图", game_map["name"]),
-                         ("玩法", MODE_NAMES[game_map["mode"]])])
+                         ("玩法", MODE_NAMES.get(game_map.get("play_mode"), MODE_NAMES[game_map["mode"]]))])
     if slots:
         metadata.append(("队伍" if len(slots) > 1 else "角色",
-                         f"{len(slots)} 人 · 不重复抽取" if len(slots) > 1 else "随机抽取 1 名角色"))
+                         f"{len(slots)} 人" if len(slots) > 1 else "随机抽取 1 名角色"))
     return {"heading": titles[kind], "metadata": metadata, "slots": slots,
             "limited": bool(game_map and game_map["mode"] == "limited"),
             "generated_at": now_cst().strftime("%Y-%m-%d %H:%M:%S")}

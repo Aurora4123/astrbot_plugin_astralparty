@@ -11,7 +11,7 @@ from .cards import AvatarCache, TEMPLATE_PATH, prepare_card
 from .card_renderer import render_card
 
 
-@register("astral_party_random", "aurora4123", "《吉星派对》随机地图角色抽取", "1.2.0")
+@register("astral_party_random", "aurora4123", "《吉星派对》随机地图角色抽取", "1.2.1")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -94,7 +94,7 @@ class MyPlugin(Star):
         """随机地图，可选：合作 / 对战 / 限时 / 全部"""
         try:
             game_map = self.catalog.random_map(
-                mode or self.config.get("default_map_mode", "合作")
+                mode or "合作"
             )
             text = f"你抽取到的地图是：{map_label(game_map)}"
             async for result in self._reply_draw(event, text, game_map=game_map, kind="map"):
@@ -120,7 +120,7 @@ class MyPlugin(Star):
         """随机地图和四人队伍，可选：合作 / 对战 / 限时 / 全部"""
         try:
             game_map = self.catalog.random_map(
-                mode or self.config.get("default_map_mode", "合作")
+                mode or "合作"
             )
             team = self.catalog.team()
             names = "\n".join(character_label(c) for c in team)
@@ -149,7 +149,7 @@ class MyPlugin(Star):
             "/星趴地图 [合作/对战/限时/全部]\n"
             "/星趴随机 [合作/对战/限时/全部]\n"
             "/星趴数据：查看数据状态\n/星趴更新：管理员同步图鉴\n"
-            "限时地图为历史存档，不代表当前开放。"
+            "不指定模式时只抽合作地图；限时地图仅在已确认的开放时间内参与抽取。"
         )
 
     async def terminate(self):

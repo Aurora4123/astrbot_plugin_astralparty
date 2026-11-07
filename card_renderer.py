@@ -66,7 +66,7 @@ def render_card(data, output_dir, font_path=""):
         text(112, y, label, 26, "#9141ba", True)
         text(208, y, value, 26, heavy=True, max_width=636)
     if data["limited"]:
-        text(86, top + meta_height + 12, "限时地图存档 · 请确认游戏内当前是否开放", 19, "#a0647b")
+        text(86, top + meta_height + 12, "限时地图 · 当前处于已配置的开放时段", 19, "#a0647b")
     for index, slot in enumerate(data["slots"]):
         y = slots_top + index * slot_height
         rect((84, y + 28, 876, y + 31), "#facbdc")

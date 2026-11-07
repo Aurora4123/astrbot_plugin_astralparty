@@ -321,32 +321,38 @@
     {
       "id": "礼物广场",
       "name": "礼物广场",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pvp"
     },
     {
       "id": "梦想号-上层甲板",
       "name": "梦想号-上层甲板",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pve"
     },
     {
       "id": "海选赛运动场",
       "name": "海选赛运动场",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pve"
     },
     {
       "id": "淘汰赛运动场",
       "name": "淘汰赛运动场",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pve"
     },
     {
       "id": "决赛大赛场",
       "name": "决赛大赛场",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pve"
     },
     {
       "id": "异变图书馆",
       "name": "异变图书馆",
-      "mode": "limited"
+      "mode": "limited",
+      "play_mode": "pve"
     }
   ]
 }
