@@ -1,8 +1,9 @@
 name: astrbot_plugin_astralparty
 display_name: 《吉星派对》随机挑战
-desc: 随机抽取游戏《吉星派对》中的地图和角色。
-version: v1.0 
+desc: 《吉星派对》角色与地图随机抽取，支持头像图片、2辅2C等定位组合及数据自动同步。
+version: v1.3.0
 author: aurora4123 
 repo: https://github.com/Aurora4123/astrbot_plugin_astralparty
 support_platforms:
   - aiocqhttp
+

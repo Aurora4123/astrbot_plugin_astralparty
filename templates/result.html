@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; width: 960px; background: #f5f1f4; }
+body { padding: 28px; color: #17233d; font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", sans-serif; }
+.sheet { background: #fff; border: 1px solid #e8e7eb; border-radius: 28px; padding: 28px 28px 24px; }
+.banner { height: 88px; background: #ef70b5; border-bottom: 3px solid #f7a9d1; display: flex; justify-content: center; align-items: center; color: white; gap: 18px; }
+.banner h1 { font-size: 29px; font-weight: 800; margin: 0; letter-spacing: 2px; }
+.spark { font-size: 28px; font-weight: 400; }
+.meta { margin: 28px 28px 0; padding: 20px 28px; border: 2px solid #f8dfef; border-radius: 22px; background: #fcf7fa; }
+.meta-row { display: flex; gap: 24px; align-items: baseline; padding: 6px 0; font-size: 26px; line-height: 1.6; font-weight: 700; }
+.meta-label { flex: 0 0 72px; color: #9141ba; }
+.meta-value { flex: 1; overflow-wrap: anywhere; }
+.warning { margin: 16px 28px 0; color: #a0647b; font-size: 19px; line-height: 1.6; }
+.slots { margin: 0 28px; }
+.slot { border-top: 3px solid #facbdc; margin-top: 30px; padding-top: 25px; }
+.slot-heading { margin: 0 0 16px; font-size: 27px; font-weight: 800; }
+.slot-heading span { color: #627087; font-size: 23px; font-weight: 600; margin-left: 14px; }
+.slot-heading .role-tag { color: #9141ba; font-size: 18px; background: #fceaf5; border-radius: 18px; padding: 4px 12px; }
+.character { width: 236px; min-height: 180px; border: 2px solid #eeedf1; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 12px; background: #fff; }
+.avatar { width: 86px; height: 86px; object-fit: cover; border-radius: 50%; margin-bottom: 8px; }
+.placeholder { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #fce3f2; color: #a452a7; font-size: 36px; font-weight: 700; }
+.name { text-align: center; font-size: 22px; font-weight: 800; line-height: 1.4; overflow-wrap: anywhere; max-width: 210px; }
+.title { margin-top: 4px; text-align: center; font-size: 17px; line-height: 1.4; color: #8992a4; max-width: 210px; overflow-wrap: anywhere; }
+.footer { text-align: center; margin: 26px 0 0; color: #acb2bf; font-size: 16px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<main class="sheet">
+  <header class="banner"><span class="spark">✦</span><h1>{{ heading | e }}</h1><span class="spark">✦</span></header>
+  <section class="meta">
+    {% for label, value in metadata %}
+    <div class="meta-row"><span class="meta-label">{{ label | e }}</span><span class="meta-value">{{ value | e }}</span></div>
+    {% endfor %}
+  </section>
+  {% if limited %}<p class="warning">限时地图 · 当前处于已配置的开放时段</p>{% endif %}
+  {% if slots %}<section class="slots">
+    {% for slot in slots %}
+    <article class="slot">
+      <h2 class="slot-heading">{{ slot.position | e }}<span>（抽 1 个）</span>{% if slot.role %}<span class="role-tag">{{ slot.role | e }}</span>{% endif %}</h2>
+      <div class="character">
+        {% if slot.avatar %}<img class="avatar" src="{{ slot.avatar | e }}" alt="{{ slot.name | e }}">
+        {% else %}<div class="avatar placeholder">{{ slot.initial | e }}</div>{% endif %}
+        <div class="name">{{ slot.name | e }}</div>
+        <div class="title">{{ slot.title | e }}</div>
+      </div>
+    </article>
+    {% endfor %}
+  </section>{% endif %}
+  <footer class="footer">Astral Party · AstrBot<br>{{ generated_at | e }} CST</footer>
+</main>
+</body>
+</html>
