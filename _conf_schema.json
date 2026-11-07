@@ -1,0 +1,21 @@
+{
+  "auto_update": {
+    "description": "自动同步角色与地图图鉴",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后启动时后台同步，之后按间隔检查。失败时继续使用本地数据。"
+  },
+  "update_interval_hours": {
+    "description": "自动同步间隔（小时）",
+    "type": "int",
+    "default": 24,
+    "hint": "支持 1–720 小时，非法值按 24 小时处理。"
+  },
+  "default_map_mode": {
+    "description": "默认地图模式",
+    "type": "string",
+    "default": "合作",
+    "options": ["合作", "对战", "全部"],
+    "hint": "全部包括已结束的限时地图；默认合作只抽常驻合作地图。"
+  }
+}

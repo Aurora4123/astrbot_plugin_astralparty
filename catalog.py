@@ -1,0 +1,243 @@
+"""Data-only catalog and BWIKI synchronizer; no AstrBot dependency."""
+
+import asyncio
+import json
+import os
+import random
+import tempfile
+from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
+from pathlib import Path
+from urllib.parse import quote
+from urllib.request import Request, urlopen
+
+CST = timezone(timedelta(hours=8))
+WIKI_BASE = "https://wiki.biligame.com/starengine/"
+CHARACTER_URL = WIKI_BASE + quote("星趴角色图鉴")
+MAP_URL = WIKI_BASE + quote("星趴地图图鉴")
+BUNDLED_PATH = Path(__file__).with_name("data") / "catalog.json"
+MODES = {"合作挑战模式": "pve", "标准对战模式": "pvp", "限时玩法": "limited"}
+MODE_ALIASES = {"合作": "pve", "对战": "pvp", "限时": "limited", "全部": "all",
+                "pve": "pve", "pvp": "pvp", "limited": "limited", "all": "all"}
+MAX_BYTES = 4 * 1024 * 1024
+
+
+def now_cst():
+    return datetime.now(CST)
+
+
+class CatalogError(ValueError):
+    pass
+
+
+def _text(value, field):
+    if not isinstance(value, str) or not value.strip() or len(value) > 80:
+        raise CatalogError(f"无效的 {field}")
+    if any(ord(c) < 32 for c in value):
+        raise CatalogError(f"{field} 包含控制字符")
+    return value.strip()
+
+
+def validate(data):
+    """Reject incomplete/changed layouts before replacing a usable catalog."""
+    if not isinstance(data, dict) or data.get("schema_version") != 1:
+        raise CatalogError("不支持的数据版本")
+    for kind in ("characters", "maps"):
+        entries = data.get(kind)
+        if not isinstance(entries, list) or not entries or len(entries) > 500:
+            raise CatalogError(f"{kind} 数据为空或过大")
+        seen = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise CatalogError("条目必须为对象")
+            key = _text(entry.get("id"), "id")
+            _text(entry.get("name"), "name")
+            if key in seen:
+                raise CatalogError(f"重复 id：{key}")
+            seen.add(key)
+            if kind == "characters":
+                _text(entry.get("title"), "title")
+                try:
+                    release = entry["release_at"]
+                    if not isinstance(release, str) or len(release) != 12 or not release.isascii() or not release.isdigit():
+                        raise ValueError("expected YYYYMMDDHHMM")
+                    datetime.strptime(entry["release_at"], "%Y%m%d%H%M")
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise CatalogError("角色上线时间无效") from exc
+            elif entry.get("mode") not in ("pve", "pvp", "limited"):
+                raise CatalogError("地图模式无效")
+    if len(data["characters"]) < 4:
+        raise CatalogError("角色不足四人")
+    for mode in ("pve", "pvp", "limited"):
+        if not any(m["mode"] == mode for m in data["maps"]):
+            raise CatalogError(f"缺少 {mode} 地图")
+    return data
+
+
+class WikiParser(HTMLParser):
+    """Parse observed card attributes and the map navigation table only."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.characters = []
+        self.maps = []
+        self.in_row = False
+        self.in_header = False
+        self.header = ""
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "div" and "divsort" in a.get("class", "").split():
+            if "data-param1" in a and "data-param12" in a:
+                self.characters.append({"id": a.get("data-param1"),
+                                        "name": a.get("data-param2"),
+                                        "title": a.get("data-param3"),
+                                        "release_at": a.get("data-param12")})
+        if tag == "tr":
+            self.in_row, self.header, self.links = True, "", []
+        elif tag == "th" and self.in_row:
+            self.in_header = True
+        elif tag == "a" and self.in_row:
+            if a.get("href", "").startswith("/starengine/") and a.get("title"):
+                self.links.append(a["title"])
+
+    def handle_data(self, data):
+        if self.in_header:
+            self.header += data
+
+    def handle_endtag(self, tag):
+        if tag == "th":
+            self.in_header = False
+        elif tag == "tr" and self.in_row:
+            mode = MODES.get(self.header.strip())
+            if mode:
+                for name in dict.fromkeys(self.links):
+                    self.maps.append({"id": name, "name": name, "mode": mode})
+            self.in_row = False
+            self.in_header = False
+
+
+def parse_wiki(character_html, map_html):
+    c, m = WikiParser(), WikiParser()
+    c.feed(character_html)
+    m.feed(map_html)
+    # Duplicate rows/cards are a layout change, not extra random weight.
+    return validate({"schema_version": 1, "synced_at": now_cst().isoformat(),
+                     "sources": [CHARACTER_URL, MAP_URL],
+                     "characters": c.characters, "maps": m.maps})
+
+
+def fetch_page(url):
+    req = Request(url, headers={"User-Agent": "AstralPartyCatalog/1.1 (+AstrBot plugin)"})
+    with urlopen(req, timeout=15) as response:
+        body = response.read(MAX_BYTES + 1)
+    if len(body) > MAX_BYTES:
+        raise CatalogError("图鉴响应过大")
+    return body.decode("utf-8")
+
+
+def atomic_save(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix="catalog-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            json.dump(data, out, ensure_ascii=False, indent=2)
+            out.write("\n")
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def load_json(path):
+    if path.stat().st_size > MAX_BYTES:
+        raise CatalogError("数据文件过大")
+    return validate(json.loads(path.read_text(encoding="utf-8")))
+
+
+def normalize_mode(mode):
+    try:
+        return MODE_ALIASES[mode.strip().lower()]
+    except KeyError as exc:
+        raise CatalogError("模式请选择：合作 / 对战 / 限时 / 全部") from exc
+
+
+class CatalogStore:
+    def __init__(self, cache_path, bundled_path=BUNDLED_PATH):
+        self.cache_path = Path(cache_path)
+        self.bundled_path = Path(bundled_path)
+        self.data = load_json(self.bundled_path)
+        self.source = "内置数据"
+        self.last_error = ""
+        self._lock = asyncio.Lock()
+        if self.cache_path.exists():
+            try:
+                cached = load_json(self.cache_path)
+                # An older persistent cache must not hide a newer bundled snapshot.
+                if cached.get("synced_at", "") >= self.data.get("synced_at", ""):
+                    self.data, self.source = cached, "本地缓存"
+            except (OSError, ValueError) as exc:
+                self.last_error = str(exc)
+
+    def characters(self, now=None):
+        when = (now or now_cst()).astimezone(CST).strftime("%Y%m%d%H%M")
+        return [c for c in self.data["characters"] if c["release_at"] <= when]
+
+    def maps(self, mode="pve"):
+        mode = normalize_mode(mode)
+        return [m for m in self.data["maps"] if mode == "all" or m["mode"] == mode]
+
+    def team(self, num=4):
+        pool = self.characters()
+        if not 1 <= num <= len(pool):
+            raise CatalogError("可用角色数量不足")
+        return random.sample(pool, num)
+
+    def random_character(self):
+        return self.team(1)[0]
+
+    def random_map(self, mode="pve"):
+        pool = self.maps(mode)
+        if not pool:
+            raise CatalogError("该模式暂无可用地图")
+        return random.choice(pool)
+
+    async def refresh(self, fetcher=fetch_page):
+        # A second simultaneous admin request reuses the in-flight attempt.
+        if self._lock.locked():
+            return "已有更新正在进行，请稍后查看 /星趴数据"
+        async with self._lock:
+            try:
+                # Both documents must succeed before either collection is replaced.
+                def download():
+                    return parse_wiki(fetcher(CHARACTER_URL), fetcher(MAP_URL))
+                candidate = await asyncio.to_thread(download)
+                old_ids = {c["id"] for c in self.data["characters"]}
+                if not old_ids.issubset({c["id"] for c in candidate["characters"]}):
+                    raise CatalogError("图鉴角色缺失，保留原数据；请检查图鉴或手动维护")
+                for mode in ("pve", "pvp", "limited"):
+                    if len([m for m in candidate["maps"] if m["mode"] == mode]) < len(self.maps(mode)):
+                        raise CatalogError(f"{mode} 地图数量异常减少，保留原数据")
+                await asyncio.to_thread(atomic_save, self.cache_path, candidate)
+                self.data, self.source, self.last_error = candidate, "BWIKI 同步", ""
+                return f"更新成功：{len(self.characters())} 名已上线角色，{len(self.maps('all'))} 张地图（含限时）"
+            except Exception as exc:
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                return "更新失败，已保留现有数据。请检查网络或查看日志。"
+
+    def status(self):
+        counts = " / ".join(f"{label} {len(self.maps(mode))}" for label, mode in
+                            (("合作", "pve"), ("对战", "pvp"), ("限时存档", "limited")))
+        return (f"数据来源：{self.source}\n数据时间：{self.data.get('synced_at', '未知')}\n"
+                f"已上线角色：{len(self.characters())}\n地图：{counts}\n"
+                f"最近同步：{'失败（保留现有数据）' if self.last_error else '正常'}")
+
+
+def character_label(character):
+    return f"{character['title']}·{character['name']}"
+
+
+def map_label(game_map):
+    suffix = "（限时地图存档，请确认游戏内是否开放）" if game_map["mode"] == "limited" else ""
+    return game_map["name"] + suffix
