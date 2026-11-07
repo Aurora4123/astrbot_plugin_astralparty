@@ -2,6 +2,18 @@
 
 随机抽取角色、地图与不重复的四人队伍。保留原来的四条命令，增加图鉴自动同步、管理员手动同步与数据状态查询。
 
+## v1.2 图片输出
+
+四条抽取命令默认发送带头像的粉白色图片：粉色标题栏、地图与玩法信息、按一至四号位排列的角色卡片。单抽、只抽地图会使用相应的紧凑版式。没有实际配置的难度或预设不会凭空显示。
+
+![图片输出预览](docs/preview.png)
+
+优先使用 Pillow 在本地生成 PNG，不需要浏览器或外部渲染服务；绘图和头像文件读取在后台线程中执行。当前 35 名角色的高清游戏头像随插件分发，绘制时圆形裁切，无需在线下载。
+
+本地自动查找 Windows 微软雅黑、Linux Noto CJK / 文泉驿或 macOS 苹方。AstrBot 官方 Docker 镜像包含 Noto CJK。其他 Linux 环境可安装 `fonts-noto-cjk`，或在插件配置的 `font_path` 填写已有中文字体文件路径。字体不可用时尝试 AstrBot 已配置的 HTML 渲染服务；生成或平台发送失败会回退成同一次抽取的文字结果，不会重新抽取。成功发送后清理本次生成的临时 PNG。
+
+可在插件配置关闭 `image_output` 恢复文字输出。未来新角色会从图鉴卡片同步头像地址，首次使用时下载并缓存；无法取得头像时显示姓名占位，抽取仍正常进行。头像下载仅接受 BWIKI 图片域名，超时 6 秒、最大 1 MiB，并限制并发与失败重试频率。
+
 ## 使用
 
 | 命令 | 作用 |
@@ -35,11 +47,11 @@
 
 ## 安装与配置
 
-Python 3.10+、AstrBot 4.x（需要支持 `AstrBotConfig` 和 `StarTools.get_data_dir`）。无新增第三方运行依赖。
+Python 3.10+、AstrBot 4.x（需要支持 `AstrBotConfig` 和 `StarTools.get_data_dir`）、Pillow 11.2.1+。AstrBot 安装插件时会处理 `requirements.txt`；手动复制时请安装其中依赖。
 
 本更新版本的安装地址：`https://github.com/shangzhimingge/astrbot_plugin_astralparty`。在插件管理中通过 Git 链接安装；升级现有安装前先备份原目录，避免同时安装两个同名插件。原项目：[Aurora4123/astrbot_plugin_astralparty](https://github.com/Aurora4123/astrbot_plugin_astralparty)。
 
-将整个插件目录放入 AstrBot 的 `data/plugins/astrbot_plugin_astralparty`，随后重载插件。升级时必须连同 `catalog.py`、`data/catalog.json` 和 `_conf_schema.json` 一起复制。
+将整个插件目录放入 AstrBot 的 `data/plugins/astrbot_plugin_astralparty`，随后重载插件。升级时请复制整个目录，包含 `card_renderer.py`、`cards.py`、`templates/` 和 `data/avatars/` 等新增文件。
 
 插件配置面板：
 - **自动同步角色与地图图鉴**：默认开启，加载后后台检查，不阻塞抽取。
@@ -74,13 +86,15 @@ python scripts/update_catalog.py
 ## 验证
 
 ```bash
-python -m pip install pytest
+python -m pip install pytest jinja2 -r requirements.txt
 python -m pytest -q
 ```
 
-覆盖数据快照、角色可达性、无重复队伍、上线时间边界、地图分类、解析去重、缓存重载、并发更新、网络/验证码/缺失条目/磁盘失败回退。在线环境仍需在 AstrBot 中验证管理员权限及 BWIKI 连通性。
+覆盖数据快照、角色可达性、无重复队伍、上线时间边界、地图分类、解析去重、缓存重载、并发更新、网络/验证码/缺失条目/磁盘失败回退，以及头像对应、HTML 转义、PNG 渲染、图像发送、临时文件清理和文字回退。在线环境仍需在 AstrBot 中验证平台图片发送、管理员权限及 BWIKI 连通性。
 
 ## 许可
 
 AGPL-3.0，保留原作者 aurora4123 的署名。图鉴内容归其贡献者及相关权利人所有。
+
+角色头像来自 BWIKI 各角色页面的游戏头像（`UT Item Hero`）。对应来源 URL 记录在 `data/catalog.json` 的 `avatar_url` 中，素材权利属于游戏及相关权利人。
 

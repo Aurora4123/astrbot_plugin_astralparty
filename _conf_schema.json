@@ -1,4 +1,16 @@
 {
+  "image_output": {
+    "description": "使用角色头像图片展示抽取结果",
+    "type": "bool",
+    "default": true,
+    "hint": "粉白色卡片。优先本地生成，缺少字体时尝试 AstrBot 渲染服务；失败自动回退文字。"
+  },
+  "font_path": {
+    "description": "本地渲染中文字体路径（可留空）",
+    "type": "string",
+    "default": "",
+    "hint": "留空自动查找微软雅黑、Noto CJK、文泉驿、苹方。AstrBot 官方 Docker 镜像已包含 Noto CJK。"
+  },
   "auto_update": {
     "description": "自动同步角色与地图图鉴",
     "type": "bool",

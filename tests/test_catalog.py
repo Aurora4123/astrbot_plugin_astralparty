@@ -24,9 +24,10 @@ def pages(data):
     # Minimal form of the card attributes/table markup observed on BWIKI.
     cards = "".join(
         '<div class="divsort" data-param1="{id}" data-param2="{name}" '
-        'data-param3="{title}" data-param12="{release_at}"></div>'.format(
+        'data-param3="{title}" data-param12="{release_at}">'.format(
             **{k: escape(v, quote=True) for k, v in c.items()}
-        ) for c in data["characters"]
+        ) + (f'<img src="{escape(c["avatar_url"], quote=True)}">' if c.get("avatar_url") else "")
+        + "</div>" for c in data["characters"]
     )
     rows = []
     for label, mode in (("合作挑战模式", "pve"), ("标准对战模式", "pvp"), ("限时玩法", "limited")):

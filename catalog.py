@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 
 CST = timezone(timedelta(hours=8))
 WIKI_BASE = "https://wiki.biligame.com/starengine/"
@@ -85,6 +86,7 @@ class WikiParser(HTMLParser):
         self.in_header = False
         self.header = ""
         self.links = []
+        self._card = None
 
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -94,6 +96,13 @@ class WikiParser(HTMLParser):
                                         "name": a.get("data-param2"),
                                         "title": a.get("data-param3"),
                                         "release_at": a.get("data-param12")})
+                self._card = self.characters[-1]
+        if tag == "img" and self._card and "avatar_url" not in self._card:
+            src = a.get("src", "")
+            if urlparse(src).hostname == "patchwiki.biligame.com" and src.startswith("https://"):
+                # Newly added characters can use their portrait until a Q-version
+                # icon is added to the bundled resources.
+                self._card["avatar_url"] = src
         if tag == "tr":
             self.in_row, self.header, self.links = True, "", []
         elif tag == "th" and self.in_row:
@@ -213,6 +222,12 @@ class CatalogStore:
                 def download():
                     return parse_wiki(fetcher(CHARACTER_URL), fetcher(MAP_URL))
                 candidate = await asyncio.to_thread(download)
+                previous = {c["id"]: c for c in self.data["characters"]}
+                bundled = {c["id"]: c for c in load_json(self.bundled_path)["characters"]}
+                for character in candidate["characters"]:
+                    old = bundled.get(character["id"], previous.get(character["id"], {}))
+                    if old.get("avatar_url"):
+                        character["avatar_url"] = old["avatar_url"]
                 old_ids = {c["id"] for c in self.data["characters"]}
                 if not old_ids.issubset({c["id"] for c in candidate["characters"]}):
                     raise CatalogError("图鉴角色缺失，保留原数据；请检查图鉴或手动维护")

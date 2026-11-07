@@ -1,14 +1,17 @@
 import asyncio
 from contextlib import suppress
+from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools, register
 
 from .catalog import CatalogError, CatalogStore, character_label, map_label
+from .cards import AvatarCache, TEMPLATE_PATH, prepare_card
+from .card_renderer import render_card
 
 
-@register("astral_party_random", "aurora4123", "《吉星派对》随机地图角色抽取", "1.1.0")
+@register("astral_party_random", "aurora4123", "《吉星派对》随机地图角色抽取", "1.2.0")
 class MyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -17,6 +20,39 @@ class MyPlugin(Star):
             StarTools.get_data_dir("astrbot_plugin_astralparty") / "catalog.json"
         )
         self._update_task = None
+        self.avatars = AvatarCache(self.catalog.cache_path.parent / "avatars")
+        self._card_template = TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    async def _reply_draw(self, event, text, characters=(), game_map=None, kind="random"):
+        if self.config.get("image_output", True):
+            local_image = None
+            try:
+                data = await prepare_card(characters, game_map, kind, self.avatars)
+                try:
+                    local_image = await asyncio.to_thread(
+                        render_card, data, self.catalog.cache_path.parent / "renders",
+                        self.config.get("font_path", ""),
+                    )
+                    image = local_image
+                except Exception as exc:
+                    logger.warning("星趴本地图片渲染失败，尝试 AstrBot 渲染服务: %s", exc)
+                    image = await asyncio.wait_for(
+                        self.html_render(
+                            self._card_template, data,
+                            options={"full_page": True, "type": "png",
+                                     "viewport": {"width": 960, "height": 720}},
+                        ), timeout=45,
+                    )
+                # Sending directly lets us fall back if an adapter rejects images.
+                await event.send(event.image_result(image))
+                return
+            except Exception as exc:
+                logger.warning("星趴结果图片生成或发送失败，回退文字: %s", exc)
+            finally:
+                if local_image:
+                    with suppress(OSError):
+                        Path(local_image).unlink()
+        yield event.plain_result(text)
 
     async def initialize(self):
         if self.config.get("auto_update", True):
@@ -46,9 +82,10 @@ class MyPlugin(Star):
     async def random_character(self, event: AstrMessageEvent):
         """随机一个已上线角色"""
         try:
-            yield event.plain_result(
-                f"你抽取到的角色是：{character_label(self.catalog.random_character())}"
-            )
+            character = self.catalog.random_character()
+            text = f"你抽取到的角色是：{character_label(character)}"
+            async for result in self._reply_draw(event, text, [character], kind="character"):
+                yield result
         except CatalogError as exc:
             yield event.plain_result(str(exc))
 
@@ -59,7 +96,9 @@ class MyPlugin(Star):
             game_map = self.catalog.random_map(
                 mode or self.config.get("default_map_mode", "合作")
             )
-            yield event.plain_result(f"你抽取到的地图是：{map_label(game_map)}")
+            text = f"你抽取到的地图是：{map_label(game_map)}"
+            async for result in self._reply_draw(event, text, game_map=game_map, kind="map"):
+                yield result
         except CatalogError as exc:
             yield event.plain_result(str(exc))
 
@@ -67,8 +106,12 @@ class MyPlugin(Star):
     async def random_team(self, event: AstrMessageEvent):
         """随机一支不重复的四人队伍"""
         try:
-            names = "\n".join(character_label(c) for c in self.catalog.team())
-            yield event.plain_result(f"你抽取到的队伍是：\n{names}")
+            team = self.catalog.team()
+            names = "\n".join(character_label(c) for c in team)
+            async for result in self._reply_draw(
+                event, f"你抽取到的队伍是：\n{names}", team, kind="team"
+            ):
+                yield result
         except CatalogError as exc:
             yield event.plain_result(str(exc))
 
@@ -79,10 +122,11 @@ class MyPlugin(Star):
             game_map = self.catalog.random_map(
                 mode or self.config.get("default_map_mode", "合作")
             )
-            names = "\n".join(character_label(c) for c in self.catalog.team())
-            yield event.plain_result(
-                f"你抽取到的地图是：{map_label(game_map)}\n队伍：\n{names}"
-            )
+            team = self.catalog.team()
+            names = "\n".join(character_label(c) for c in team)
+            text = f"你抽取到的地图是：{map_label(game_map)}\n队伍：\n{names}"
+            async for result in self._reply_draw(event, text, team, game_map):
+                yield result
         except CatalogError as exc:
             yield event.plain_result(str(exc))
 
