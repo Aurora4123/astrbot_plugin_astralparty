@@ -72,6 +72,9 @@ def render_card(data, output_dir, font_path=""):
         rect((84, y + 28, 876, y + 31), "#facbdc")
         text(84, y + 49, slot["position"], 27, heavy=True)
         text(194, y + 53, "（抽 1 个）", 23, "#627087", True)
+        if slot.get("role"):
+            rect((342, y + 49, 476, y + 82), "#fceaf5", radius=16)
+            text(409, y + 50, slot["role"], 18, "#9141ba", center=True)
         rect((84, y + 98, 320, y + 242), "#ffffff", "#eeedf1", 20, 2)
         if slot["avatar"]:
             try:

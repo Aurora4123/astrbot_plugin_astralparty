@@ -176,6 +176,36 @@ def test_plugin_sends_card_with_same_draw(monkeypatch, tmp_path):
     assert data["metadata"][1] == ("玩法", "标准对战")
 
 
+@pytest.mark.parametrize("command,args", [
+    ("random", ("2辅2c",)),
+    ("random", ("合作", "2辅2c")),
+    ("random", ("2辅2c", "合作")),
+    ("random_team", ("2辅2c",)),
+    ("random_team", ("2辅", "2c")),
+])
+def test_composition_command_outputs_assigned_roles(monkeypatch, tmp_path, command, args):
+    plugin = load_plugin(monkeypatch, tmp_path)
+    plugin.html_render = AsyncMock(return_value="https://renderer.example/card.png")
+    event = Event()
+    assert asyncio.run(collect(getattr(plugin, command)(event, *args))) == []
+    data = plugin.html_render.call_args.args[1]
+    assert [s["role"] for s in data["slots"]] == ["辅助", "辅助", "输出", "输出"]
+    assert ("阵容", "2辅2C") in data["metadata"]
+    assert len({s["name"] for s in data["slots"]}) == 4
+    if command == "random":
+        assert data["metadata"][1] == ("玩法", "合作挑战")
+
+
+def test_composition_validation_and_text_fallback(monkeypatch, tmp_path):
+    plugin = load_plugin(monkeypatch, tmp_path)
+    plugin.config["image_output"] = False
+    invalid = asyncio.run(collect(plugin.random(Event(), "2辅1c")))
+    assert "合计必须为4" in invalid[0][1]
+    result = asyncio.run(collect(plugin.random_team(Event(), "2辅2c")))
+    assert result[0][1].count("（辅助）") == 2
+    assert result[0][1].count("（输出）") == 2
+
+
 @pytest.mark.parametrize("old_default", ["全部", "对战"])
 @pytest.mark.parametrize("command", ["random", "random_map"])
 def test_no_argument_commands_ignore_old_pvp_default(monkeypatch, tmp_path, old_default, command):

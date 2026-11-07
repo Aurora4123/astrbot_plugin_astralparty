@@ -25,7 +25,7 @@ def pages(data):
     cards = "".join(
         '<div class="divsort" data-param1="{id}" data-param2="{name}" '
         'data-param3="{title}" data-param12="{release_at}">'.format(
-            **{k: escape(v, quote=True) for k, v in c.items()}
+            **{k: escape(v, quote=True) for k, v in c.items() if isinstance(v, str)}
         ) + (f'<img src="{escape(c["avatar_url"], quote=True)}">' if c.get("avatar_url") else "")
         + "</div>" for c in data["characters"]
     )
@@ -72,7 +72,10 @@ def test_future_release_at_china_time(store):
 
 def test_real_markup_shape_round_trip(store):
     data = parse_wiki(*pages(store.data))
-    assert data["characters"] == store.data["characters"]
+    assert data["characters"] == [
+        {k: v for k, v in c.items() if k not in ("role_scores", "roles")}
+        for c in store.data["characters"]
+    ]
     assert len(data["maps"]) == 19  # image and text anchors are deduplicated
     assert len({m["id"] for m in data["maps"]}) == 19
 

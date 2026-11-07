@@ -19,6 +19,7 @@ body { padding: 28px; color: #17233d; font-family: "Noto Sans CJK SC", "Microsof
 .slot { border-top: 3px solid #facbdc; margin-top: 30px; padding-top: 25px; }
 .slot-heading { margin: 0 0 16px; font-size: 27px; font-weight: 800; }
 .slot-heading span { color: #627087; font-size: 23px; font-weight: 600; margin-left: 14px; }
+.slot-heading .role-tag { color: #9141ba; font-size: 18px; background: #fceaf5; border-radius: 18px; padding: 4px 12px; }
 .character { width: 236px; min-height: 180px; border: 2px solid #eeedf1; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px 12px; background: #fff; }
 .avatar { width: 86px; height: 86px; object-fit: cover; border-radius: 50%; margin-bottom: 8px; }
 .placeholder { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #fce3f2; color: #a452a7; font-size: 36px; font-weight: 700; }
@@ -39,7 +40,7 @@ body { padding: 28px; color: #17233d; font-family: "Noto Sans CJK SC", "Microsof
   {% if slots %}<section class="slots">
     {% for slot in slots %}
     <article class="slot">
-      <h2 class="slot-heading">{{ slot.position | e }}<span>（抽 1 个）</span></h2>
+      <h2 class="slot-heading">{{ slot.position | e }}<span>（抽 1 个）</span>{% if slot.role %}<span class="role-tag">{{ slot.role | e }}</span>{% endif %}</h2>
       <div class="character">
         {% if slot.avatar %}<img class="avatar" src="{{ slot.avatar | e }}" alt="{{ slot.name | e }}">
         {% else %}<div class="avatar placeholder">{{ slot.initial | e }}</div>{% endif %}

@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from .catalog import now_cst
+from .roles import ROLE_LABELS, composition_label
 
 ASSET_ROOT = Path(__file__).with_name("data") / "avatars"
 TEMPLATE_PATH = Path(__file__).with_name("templates") / "result.html"
@@ -114,6 +115,7 @@ async def prepare_card(characters, game_map, kind, avatars):
     for index, (character, portrait) in enumerate(zip(characters, portraits)):
         slots.append({"position": POSITIONS[index] if len(characters) > 1 else "本次角色",
                       "name": character["name"], "title": character["title"],
+                      "role": ROLE_LABELS.get(character.get("assigned_role"), ""),
                       "avatar": portrait, "initial": character["name"][:1]})
     titles = {"random": "星趴随机开局", "team": "星趴随机队伍",
               "character": "星趴角色抽取", "map": "星趴地图抽取"}
@@ -124,6 +126,8 @@ async def prepare_card(characters, game_map, kind, avatars):
     if slots:
         metadata.append(("队伍" if len(slots) > 1 else "角色",
                          f"{len(slots)} 人" if len(slots) > 1 else "随机抽取 1 名角色"))
+    if characters and all(c.get("assigned_role") for c in characters):
+        metadata.append(("阵容", composition_label([c["assigned_role"] for c in characters])))
     return {"heading": titles[kind], "metadata": metadata, "slots": slots,
             "limited": bool(game_map and game_map["mode"] == "limited"),
             "generated_at": now_cst().strftime("%Y-%m-%d %H:%M:%S")}

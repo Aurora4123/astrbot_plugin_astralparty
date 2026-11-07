@@ -12,10 +12,18 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from urllib.parse import urlparse
 
+try:
+    from .roles import (CompositionError, ROLE_LABELS, SCORE_ROLES, draw_composition,
+                        parse_role_scores, roles_for, valid_scores)
+except ImportError:  # Standalone maintenance script.
+    from roles import (CompositionError, ROLE_LABELS, SCORE_ROLES, draw_composition,
+                       parse_role_scores, roles_for, valid_scores)
+
 CST = timezone(timedelta(hours=8))
 WIKI_BASE = "https://wiki.biligame.com/starengine/"
 CHARACTER_URL = WIKI_BASE + quote("星趴角色图鉴")
 MAP_URL = WIKI_BASE + quote("星趴地图图鉴")
+ROLE_URL = WIKI_BASE + quote("筹码")
 BUNDLED_PATH = Path(__file__).with_name("data") / "catalog.json"
 MODES = {"合作挑战模式": "pve", "标准对战模式": "pvp", "限时玩法": "limited"}
 MODE_ALIASES = {"合作": "pve", "对战": "pvp", "限时": "limited", "全部": "all",
@@ -78,6 +86,13 @@ def validate(data):
                     parse_time(entry["release_at"])
                 except (KeyError, TypeError, ValueError) as exc:
                     raise CatalogError("角色上线时间无效") from exc
+                if "role_scores" in entry and not valid_scores(entry["role_scores"]):
+                    raise CatalogError("角色职业分值无效")
+                if "roles" in entry and (
+                    not isinstance(entry["roles"], list)
+                    or any(not isinstance(role, str) or role not in ROLE_LABELS for role in entry["roles"])
+                ):
+                    raise CatalogError("角色定位标签无效")
             elif entry.get("mode") not in ("pve", "pvp", "limited"):
                 raise CatalogError("地图模式无效")
             else:
@@ -199,8 +214,10 @@ class CatalogStore:
         self.cache_path = Path(cache_path)
         self.bundled_path = Path(bundled_path)
         self.data = load_json(self.bundled_path)
+        self.role_defaults = {c["id"]: c for c in self.data["characters"]}
         self.source = "内置数据"
         self.last_error = ""
+        self.last_role_error = ""
         self._lock = asyncio.Lock()
         if self.cache_path.exists():
             try:
@@ -231,8 +248,15 @@ class CatalogStore:
                 result.append(game_map)
         return result
 
-    def team(self, num=4):
+    def team(self, num=4, composition=""):
         pool = self.characters()
+        if composition:
+            if num != 4:
+                raise CatalogError("定位组合目前只支持四人队伍")
+            try:
+                return draw_composition(pool, composition, self.role_defaults)
+            except CompositionError as exc:
+                raise CatalogError(str(exc)) from exc
         if not 1 <= num <= len(pool):
             raise CatalogError("可用角色数量不足")
         return random.sample(pool, num)
@@ -254,14 +278,27 @@ class CatalogStore:
             try:
                 # Both documents must succeed before either collection is replaced.
                 def download():
-                    return parse_wiki(fetcher(CHARACTER_URL), fetcher(MAP_URL))
-                candidate = await asyncio.to_thread(download)
+                    candidate = parse_wiki(fetcher(CHARACTER_URL), fetcher(MAP_URL))
+                    try:
+                        scores = parse_role_scores(fetcher(ROLE_URL))
+                        return candidate, scores, ""
+                    except Exception as exc:
+                        return candidate, {}, str(exc)
+                candidate, scores, role_error = await asyncio.to_thread(download)
+                candidate["role_score_order"] = list(SCORE_ROLES)
+                candidate["role_source"] = ROLE_URL
                 previous = {c["id"]: c for c in self.data["characters"]}
                 bundled = {c["id"]: c for c in load_json(self.bundled_path)["characters"]}
                 for character in candidate["characters"]:
                     old = bundled.get(character["id"], previous.get(character["id"], {}))
                     if old.get("avatar_url"):
                         character["avatar_url"] = old["avatar_url"]
+                    role_data = bundled.get(character["id"], {}) | previous.get(character["id"], {})
+                    for key in ("role_scores", "roles"):
+                        if key in role_data:
+                            character[key] = role_data[key]
+                    if character["id"] in scores:
+                        character["role_scores"] = scores[character["id"]]
                 old_maps = {m["id"]: m for m in load_json(self.bundled_path)["maps"]}
                 for game_map in self.data["maps"]:
                     old_maps[game_map["id"]] = old_maps.get(game_map["id"], {}) | game_map
@@ -281,6 +318,7 @@ class CatalogStore:
                 validate(candidate)
                 await asyncio.to_thread(atomic_save, self.cache_path, candidate)
                 self.data, self.source, self.last_error = candidate, "BWIKI 同步", ""
+                self.last_role_error = role_error
                 return f"更新成功：{len(self.characters())} 名已上线角色，{len(self.maps('all'))} 张地图资料（当前可抽限时 {len(self.draw_maps('limited'))} 张）"
             except Exception as exc:
                 self.last_error = f"{type(exc).__name__}: {exc}"
@@ -292,11 +330,16 @@ class CatalogStore:
         return (f"数据来源：{self.source}\n数据时间：{self.data.get('synced_at', '未知')}\n"
                 f"已上线角色：{len(self.characters())}\n地图：{counts}\n"
                 f"当前可抽限时：{len(self.draw_maps('limited'))}\n"
+                f"已分类角色：{sum(roles_for(c, self.role_defaults.get(c['id'])) != {'any'} for c in self.characters())}\n"
+                f"定位同步：{'沿用已有数据' if self.last_role_error else '正常'}\n"
                 f"最近同步：{'失败（保留现有数据）' if self.last_error else '正常'}")
 
 
 def character_label(character):
-    return f"{character['title']}·{character['name']}"
+    label = f"{character['title']}·{character['name']}"
+    if character.get("assigned_role"):
+        label += f"（{ROLE_LABELS[character['assigned_role']]}）"
+    return label
 
 
 def map_label(game_map):
